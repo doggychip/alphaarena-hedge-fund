@@ -1,188 +1,166 @@
 # AlphaArena Hedge Fund
 
-An AI-powered hedge fund system that uses multiple LLM-based analyst agents to make trading decisions for **both equities and cryptocurrencies**.
+AI-powered multi-agent hedge fund supporting **equities** and **crypto** assets.
 
-Forked from [virattt/ai-hedge-fund](https://github.com/virattt/ai-hedge-fund) and extended with full crypto asset support via CoinGecko API.
+Built on [LangGraph](https://github.com/langchain-ai/langgraph) for multi-agent orchestration, with 19 AI analyst agents that generate trading signals using a mix of algorithmic analysis and LLM-based reasoning.
+
+> Forked from [virattt/ai-hedge-fund](https://github.com/virattt/ai-hedge-fund) and extended with full cryptocurrency support via [CoinGecko API](https://www.coingecko.com/en/api).
+
+## Features
+
+- **19 AI Analyst Agents** — 12 persona-based (LLM), 5 specialist (algorithmic), 2 management
+- **Dual Asset Class** — Seamlessly analyze equities (via Financial Datasets API) and crypto (via CoinGecko)
+- **Multi-Agent Orchestration** — Parallel analyst execution → risk management → portfolio decisions
+- **Backtesting Engine** — Full backtest support with Sharpe ratio, Sortino ratio, and max drawdown metrics
+- **Multiple LLM Providers** — OpenAI, Anthropic, Google Gemini, Groq, Ollama (local)
+
+## Quick Start
+
+### 1. Install dependencies
+
+```bash
+cd alphaarena-hedge-fund
+poetry install
+```
+
+### 2. Set environment variables
+
+```bash
+cp .env.example .env
+# Edit .env with your API keys:
+# - OPENAI_API_KEY (required for LLM agents)
+# - FINANCIAL_DATASETS_API_KEY (required for equity data)
+# - COINGECKO_API_KEY (optional — free tier works without key)
+```
+
+### 3. Run the hedge fund
+
+```bash
+# Equity analysis
+poetry run python src/main.py --tickers AAPL,MSFT,GOOGL
+
+# Crypto analysis
+poetry run python src/main.py --tickers BTC,ETH,SOL
+
+# Mixed portfolio
+poetry run python src/main.py --tickers AAPL,BTC,ETH
+
+# With specific analysts
+poetry run python src/main.py --tickers BTC,ETH --analysts cathie_wood,stanley_druckenmiller,technical_analyst
+
+# Show agent reasoning
+poetry run python src/main.py --tickers BTC --show-reasoning
+```
+
+### 4. Run backtesting
+
+```bash
+# Backtest with crypto
+poetry run python src/backtester.py --tickers BTC,ETH --start-date 2025-01-01 --end-date 2025-03-01
+
+# Backtest with equities
+poetry run python src/backtester.py --tickers AAPL,MSFT --start-date 2025-01-01 --end-date 2025-03-01
+```
+
+## Supported Crypto Tickers
+
+| Symbol | CoinGecko ID    |
+|--------|-----------------|
+| BTC    | bitcoin         |
+| ETH    | ethereum        |
+| BNB    | binancecoin     |
+| XRP    | ripple          |
+| SOL    | solana          |
+| ADA    | cardano         |
+| DOGE   | dogecoin        |
+| AVAX   | avalanche-2     |
+| DOT    | polkadot        |
+| LINK   | chainlink       |
+
+Any equity ticker not in this list is routed to Financial Datasets API.
+
+## Agent Roster
+
+### Persona Agents (LLM-based)
+
+| Agent | Style |
+|-------|-------|
+| Warren Buffett | Value investing, competitive moats, long-term ownership |
+| Charlie Munger | Mental models, inversion thinking, quality businesses |
+| Ben Graham | Margin of safety, intrinsic value, earnings stability |
+| Peter Lynch | GARP — growth at a reasonable price |
+| Phil Fisher | Scuttlebutt method, management quality, R&D investment |
+| Cathie Wood | Disruptive innovation, exponential growth, crypto-native thesis |
+| Michael Burry | Deep value, contrarian bets, downside protection |
+| Stanley Druckenmiller | Macro trends, asymmetric risk-reward, crypto as macro trade |
+| Bill Ackman | High-quality businesses, activist potential |
+| Aswath Damodaran | Rigorous valuation — DCF, CAPM, intrinsic value |
+| Rakesh Jhunjhunwala | Emerging market dynamics, growth at reasonable price |
+| Mohnish Pabrai | Dhandho — heads I win, tails I don't lose much |
+
+### Specialist Agents (Algorithmic)
+
+| Agent | Analysis |
+|-------|----------|
+| Technical Analyst | Chart patterns, indicators, price action |
+| Fundamentals Analyst | Financial statements, ratios, health metrics |
+| Sentiment Analyst | Insider trades (equity) / momentum & volume (crypto) |
+| Valuation Analyst | DCF, EV/EBITDA (equity) / NVT, ATH range (crypto) |
+| Growth Analyst | Revenue growth (equity) / momentum & volume trends (crypto) |
+| News Sentiment | News analysis and sentiment scoring |
+
+### Management Agents
+
+| Agent | Role |
+|-------|------|
+| Risk Manager | Position sizing, exposure limits, risk assessment |
+| Portfolio Manager | Final trading decisions based on all signals |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    CLI / Main                        │
-├─────────────────────────────────────────────────────┤
-│              LangGraph StateGraph                    │
-│                                                      │
-│  start_node ──┬── analyst_1 ──┐                     │
-│               ├── analyst_2 ──┤                     │
-│               ├── ...        ──┤                     │
-│               └── analyst_N ──┤                     │
-│                               ▼                     │
-│                    risk_management_agent              │
-│                               ▼                     │
-│                    portfolio_manager                  │
-│                               ▼                     │
-│                              END                     │
-└─────────────────────────────────────────────────────┘
+                         ┌─────────────┐
+                         │  Start Node │
+                         └──────┬──────┘
+                                │
+                    ┌───────────┼───────────┐
+                    │           │           │
+              ┌─────┴─────┐ ┌──┴──┐ ┌─────┴─────┐
+              │  Persona   │ │Tech │ │  Growth   │  ... (17 analysts in parallel)
+              │  Agents    │ │Anal.│ │  Analyst  │
+              └─────┬─────┘ └──┬──┘ └─────┬─────┘
+                    │          │           │
+                    └──────────┼───────────┘
+                               │
+                     ┌─────────┴─────────┐
+                     │  Risk Management  │
+                     └─────────┬─────────┘
+                               │
+                     ┌─────────┴─────────┐
+                     │ Portfolio Manager  │
+                     └─────────┬─────────┘
+                               │
+                            ┌──┴──┐
+                            │ END │
+                            └─────┘
 ```
 
-All analyst agents run **in parallel**, feeding into risk management, then portfolio management for final decisions.
-
-## Agents (19 total)
-
-### 12 Persona Agents (LLM-based)
-Each channels the investment philosophy of a famous investor:
-
-| Agent | Style |
-|-------|-------|
-| **Warren Buffett** | Value investing, competitive moats, margin of safety |
-| **Charlie Munger** | Mental models, inversion thinking, quality businesses |
-| **Ben Graham** | Deep value, margin of safety, earnings stability |
-| **Peter Lynch** | GARP — growth at a reasonable price |
-| **Phil Fisher** | Scuttlebutt method, management quality, R&D |
-| **Cathie Wood** | Disruptive innovation, exponential growth |
-| **Michael Burry** | Contrarian deep value, downside protection |
-| **Stanley Druckenmiller** | Macro trends, asymmetric risk-reward |
-| **Bill Ackman** | Activist investing, strong brands |
-| **Aswath Damodaran** | DCF, CAPM, intrinsic value |
-| **Rakesh Jhunjhunwala** | Emerging market growth |
-| **Mohnish Pabrai** | Dhandho — heads I win, tails I don't lose much |
-
-### 5 Specialist Agents (Algorithmic + LLM)
-| Agent | Approach |
-|-------|----------|
-| **Technical Analyst** | Chart patterns, moving averages, RSI, MACD, Bollinger Bands |
-| **Fundamentals Analyst** | Financial statements, profitability, solvency ratios |
-| **Sentiment Analyst** | Insider trades + news sentiment (equity) / price momentum + volume (crypto) |
-| **Valuation Analyst** | DCF, owner earnings, EV/EBITDA, residual income (equity) / NVT, ATH range (crypto) |
-| **Growth Analyst** | Revenue/earnings growth, margins, insider activity (equity) / momentum, volume, rank (crypto) |
-| **News Sentiment** | Company news analysis via LLM |
-
-### 2 Management Agents
-| Agent | Role |
-|-------|------|
-| **Risk Manager** | Position sizing, exposure limits, correlation checks |
-| **Portfolio Manager** | Final buy/sell/hold decisions with quantities |
-
-## Crypto Support
-
-All agents automatically detect crypto tickers and route to crypto-specific analysis:
-
-- **Specialist agents** use custom scoring algorithms based on CoinGecko market data (price momentum, volume, market cap rank, supply dynamics, NVT proxies)
-- **Persona agents** use a shared LLM helper that provides crypto market context and lets each persona apply their philosophy to crypto assets
-
-### Supported Crypto Tickers
-`BTC`, `ETH`, `BNB`, `XRP`, `SOL`, `ADA`, `DOGE`, `AVAX`, `DOT`, `LINK`
-
-### Data Sources
-- **Equities**: Financial Datasets API (prices, financials, insider trades, news)
-- **Crypto**: CoinGecko free tier API (market data, prices, volumes, supply)
-
-## Setup
-
-### Prerequisites
-- Python 3.11+
-- Poetry
-
-### Installation
-
-```bash
-# Install dependencies
-poetry install
-
-# Copy and fill in your API keys
-cp .env.example .env
-```
-
-### Required API Keys
-
-Set in `.env`:
-```
-OPENAI_API_KEY=...           # or other LLM provider
-FINANCIAL_DATASETS_API_KEY=... # for equity data
-# CoinGecko free tier requires no API key
-```
-
-## Usage
-
-### Run the hedge fund
-```bash
-# Equities
-poetry run python -m src.main --tickers AAPL,MSFT,GOOGL
-
-# Crypto
-poetry run python -m src.main --tickers BTC,ETH,SOL
-
-# Mixed portfolio
-poetry run python -m src.main --tickers AAPL,BTC,ETH
-
-# With specific analysts
-poetry run python -m src.main --tickers BTC --analysts warren_buffett,cathie_wood
-
-# All analysts, show reasoning
-poetry run python -m src.main --tickers BTC --analysts-all --show-reasoning
-```
-
-### Run backtesting
-```bash
-poetry run python -m src.backtester --tickers AAPL,BTC --start-date 2025-01-01 --end-date 2025-03-01
-```
-
-### CLI Options
-- `--tickers` — Comma-separated ticker symbols
-- `--analysts` — Comma-separated analyst keys
-- `--analysts-all` — Use all 17 analysts
-- `--model` — LLM model name (default: gpt-4.1)
-- `--ollama` — Use local Ollama inference
-- `--start-date` / `--end-date` — Date range (YYYY-MM-DD)
-- `--initial-cash` — Starting capital (default: $100,000)
-- `--show-reasoning` — Display each agent's reasoning
-
-## Signal Format
-
-All agents produce signals in a unified format:
+**Signal Format** (all agents):
 ```json
 {
-  "signal": "bullish" | "bearish" | "neutral",
+  "signal": "bullish | bearish | neutral",
   "confidence": 0-100,
-  "reasoning": "..."
+  "reasoning": { ... }
 }
 ```
 
-## Project Structure
-
-```
-src/
-├── agents/                  # All 19 agents
-│   ├── crypto_persona_helper.py  # Shared crypto LLM helper for persona agents
-│   ├── warren_buffett.py
-│   ├── charlie_munger.py
-│   ├── ... (10 more persona agents)
-│   ├── technicals.py
-│   ├── fundamentals.py
-│   ├── sentiment.py
-│   ├── valuation.py
-│   ├── growth_agent.py
-│   ├── news_sentiment.py
-│   ├── risk_manager.py
-│   └── portfolio_manager.py
-├── backtesting/             # Backtesting engine
-│   ├── engine.py
-│   ├── benchmarks.py        # SPY (equity) / BTC (crypto) benchmarks
-│   ├── portfolio.py
-│   └── ...
-├── cli/                     # CLI input handling
-├── data/                    # Data models, crypto tickers, cache
-│   ├── crypto_tickers.py    # Ticker → CoinGecko ID mapping
-│   ├── models.py            # Pydantic models incl. CryptoMarketData
-│   └── cache.py
-├── graph/                   # LangGraph state definition
-├── llm/                     # LLM model configs
-├── tools/                   # API clients
-│   ├── api.py               # Unified API (routes crypto to CoinGecko)
-│   └── coingecko.py         # CoinGecko REST client
-└── utils/                   # Display, analysts config, progress
-```
+**Crypto Routing**: Asset type is detected from the ticker symbol. Crypto tickers are routed to CoinGecko API; equity tickers to Financial Datasets API. All agents handle both asset types transparently.
 
 ## License
 
 MIT
+
+## Credits
+
+- Original project: [virattt/ai-hedge-fund](https://github.com/virattt/ai-hedge-fund)
+- Crypto data: [CoinGecko API](https://www.coingecko.com/en/api)
